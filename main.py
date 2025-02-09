@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 from pymongo import MongoClient
 from flask import Flask, request
+import threading
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -129,13 +130,21 @@ def authorize_user(message):
 def home():
     return "Bot is running!"
 
-# After your existing bot code, add:
+def bot_polling():
+    while True:
+        try:
+            print("Starting bot polling...")
+            bot.polling(timeout=20)
+        except Exception as e:
+            print(f"Bot polling error: {e}")
+            time.sleep(15)
+
 if __name__ == '__main__':
-    # Start the bot in a separate thread
-    import threading
-    bot_thread = threading.Thread(target=bot.polling, kwargs={'none_stop': True})
-    bot_thread.start()
+    # Start bot polling in a separate thread
+    polling_thread = threading.Thread(target=bot_polling)
+    polling_thread.daemon = True  # This makes the thread exit when main program exits
+    polling_thread.start()
     
-    # Start the web server
+    # Start Flask server
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
