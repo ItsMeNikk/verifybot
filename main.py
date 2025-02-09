@@ -31,8 +31,8 @@ MONGODB_URI = os.getenv('MONGODB_URI')
 print(f"Token loaded: {TOKEN[:5]}...{TOKEN[-5:]}")
 print(f"Owner ID loaded: {OWNER_ID}")
 
-# Initialize bot
-bot = telebot.TeleBot(TOKEN)
+# Initialize bot with a larger timeout
+bot = telebot.TeleBot(TOKEN, threaded=True)
 
 # Initialize MongoDB
 client = MongoClient(MONGODB_URI)
@@ -41,6 +41,9 @@ verified_collection = db['users']  # Collection name
 
 # Store authorized users with IDs
 authorized_users = {OWNER_ID}
+
+# Global variable to track bot status
+bot_running = False
 
 # Helper function to get verification data
 def get_verified_user(username):
@@ -152,32 +155,49 @@ def authorize_user(message):
 # Add these new routes
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return f"Bot is {'running' if bot_running else 'stopped'}"
 
-@app.route('/ping')
-def ping():
-    return "Pong! Bot is alive"
+@app.route('/health')
+def health():
+    status = "running" if bot_running else "stopped"
+    return f"OK - Bot is {status}", 200
 
-# Keep-alive function
-def keep_alive():
-    while True:
-        try:
-            # Send a request to your app URL every 5 minutes
-            url = "https://your-render-app-name.onrender.com"
-            requests.get(url)
-            logger.info("Keep-alive ping sent")
-        except Exception as e:
-            logger.error(f"Keep-alive error: {e}")
-        time.sleep(300)  # 5 minutes
+# Add a simple command to test bot
+@bot.message_handler(commands=['ping'])
+def ping_command(message):
+    bot.reply_to(message, "Pong! Bot is working!")
 
 def bot_polling():
+    global bot_running
     while True:
         try:
             logger.info("Bot polling started...")
-            bot.polling(timeout=20, none_stop=True)
+            bot_running = True
+            bot.polling(timeout=60, long_polling_timeout=60, non_stop=True)
         except Exception as e:
             logger.error(f"Bot polling error: {e}")
-            time.sleep(15)
+            bot_running = False
+            time.sleep(10)
+            continue
+        finally:
+            bot_running = False
+
+# Keep-alive function with bot status check
+def keep_alive():
+    while True:
+        try:
+            # Check if bot is running
+            if not bot_running:
+                logger.warning("Bot not running, restarting polling...")
+                # Restart polling thread
+                polling_thread = threading.Thread(target=bot_polling)
+                polling_thread.daemon = True
+                polling_thread.start()
+            
+            logger.info("Bot status: " + ("running" if bot_running else "stopped"))
+        except Exception as e:
+            logger.error(f"Keep-alive error: {e}")
+        time.sleep(30)  # Check every 30 seconds
 
 if __name__ == '__main__':
     # Start bot polling in a separate thread
@@ -191,5 +211,5 @@ if __name__ == '__main__':
     keep_alive_thread.start()
     
     # Start Flask server
-    port = int(os.environ.get('PORT', 10000))
+    port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port)
