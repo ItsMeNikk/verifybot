@@ -3,6 +3,10 @@ import time
 from dotenv import load_dotenv
 import os
 from pymongo import MongoClient
+from flask import Flask, request
+
+# Initialize Flask app
+app = Flask(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -120,11 +124,18 @@ def authorize_user(message):
     authorized_users.add(username)
     bot.reply_to(message, f"{username} has been authorized.")
 
-# Start the bot with error handling
-while True:
-    try:
-        print("Bot started successfully...")
-        bot.polling(none_stop=True, timeout=60)
-    except Exception as e:
-        print(f"Bot crashed with error: {e}")
-        time.sleep(10)  # Wait before retrying
+# Add these new routes
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+# After your existing bot code, add:
+if __name__ == '__main__':
+    # Start the bot in a separate thread
+    import threading
+    bot_thread = threading.Thread(target=bot.polling, kwargs={'none_stop': True})
+    bot_thread.start()
+    
+    # Start the web server
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
