@@ -19,12 +19,12 @@ if not TOKEN:
     print("Current working directory:", os.getcwd())
     exit(1)
 
-OWNER_USERNAME = os.getenv('OWNER_USERNAME')
+OWNER_ID = int(os.getenv('OWNER_ID'))  # Convert to integer
 MONGODB_URI = os.getenv('MONGODB_URI')
 
 # Print confirmation
 print(f"Token loaded: {TOKEN[:5]}...{TOKEN[-5:]}")
-print(f"Owner username loaded: {OWNER_USERNAME}")
+print(f"Owner ID loaded: {OWNER_ID}")
 
 # Initialize bot
 bot = telebot.TeleBot(TOKEN)
@@ -34,15 +34,19 @@ client = MongoClient(MONGODB_URI)
 db = client['verifiedusers']  # Database name
 verified_collection = db['users']  # Collection name
 
-# Store authorized users
-authorized_users = {OWNER_USERNAME}
+# Store authorized users with IDs
+authorized_users = {OWNER_ID}
 
 # Helper function to get verification data
 def get_verified_user(username):
-    return verified_collection.find_one({"username": username})
+    # Remove @ if present
+    username = username.replace('@', '')
+    return verified_collection.find_one({"username": username.lower()})
 
 # Helper function to save verification data
 def save_verified_user(username, service):
+    # Remove @ if present and convert to lowercase for consistency
+    username = username.replace('@', '').lower()
     verified_collection.update_one(
         {"username": username},
         {"$set": {"service": service}},
@@ -51,11 +55,12 @@ def save_verified_user(username, service):
 
 # Helper function to remove verified user
 def remove_verified_user(username):
+    username = username.replace('@', '').lower()
     verified_collection.delete_one({"username": username})
 
 # Check if the user is authorized
 def is_authorized(user):
-    return user.username in authorized_users
+    return user.id in authorized_users
 
 # Escape MarkdownV2 special characters
 def escape_markdown(text):
@@ -64,11 +69,18 @@ def escape_markdown(text):
 
 @bot.message_handler(commands=['check'])
 def check_verification(message):
-    if len(message.text.split()) != 2:
-        bot.reply_to(message, "Usage: /check @username")
+    # If replying to a message
+    if message.reply_to_message and message.reply_to_message.from_user.username:
+        username = message.reply_to_message.from_user.username
+    # If username is provided in command
+    elif len(message.text.split()) == 2:
+        username = message.text.split()[1]
+    else:
+        bot.reply_to(message, "Usage:\n1. Reply to a message with /check\n2. Or use: /check @username")
         return
 
-    username = message.text.split()[1]
+    # Remove @ if present
+    username = username.replace('@', '')
     user_data = get_verified_user(username)
     
     if user_data:
@@ -90,9 +102,13 @@ def add_verified(message):
         bot.reply_to(message, "Usage: /add @username - Service")
         return
 
-    username, service = args[1], args[2]
+    username = args[1]
+    service = args[2]
+
+    # Remove @ if present
+    username = username.replace('@', '')
     save_verified_user(username, service)
-    bot.reply_to(message, f"{username} has been added as verified for {service}.")
+    bot.reply_to(message, f"@{username} has been added as verified for {service}.")
 
 @bot.message_handler(commands=['remove'])
 def remove_verified(message):
@@ -113,17 +129,20 @@ def remove_verified(message):
 
 @bot.message_handler(commands=['auth'])
 def authorize_user(message):
-    if message.from_user.username != OWNER_USERNAME:
+    if message.from_user.id != OWNER_ID:
         bot.reply_to(message, "Only the owner can authorize users.")
         return
 
     if len(message.text.split()) != 2:
-        bot.reply_to(message, "Usage: /auth @username")
+        bot.reply_to(message, "Usage: /auth <user_id>")
         return
 
-    username = message.text.split()[1].lstrip('@')
-    authorized_users.add(username)
-    bot.reply_to(message, f"{username} has been authorized.")
+    try:
+        user_id = int(message.text.split()[1])
+        authorized_users.add(user_id)
+        bot.reply_to(message, f"User {user_id} has been authorized.")
+    except ValueError:
+        bot.reply_to(message, "Please provide a valid user ID")
 
 # Add these new routes
 @app.route('/')
