@@ -5,6 +5,12 @@ import os
 from pymongo import MongoClient
 from flask import Flask, request
 import threading
+import logging
+import requests
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -15,8 +21,7 @@ load_dotenv()
 # Configuration from .env with error checking
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 if not TOKEN:
-    print("Error: TELEGRAM_TOKEN not found in .env file")
-    print("Current working directory:", os.getcwd())
+    logger.error("Error: TELEGRAM_TOKEN not found")
     exit(1)
 
 OWNER_ID = int(os.getenv('OWNER_ID'))  # Convert to integer
@@ -149,20 +154,41 @@ def authorize_user(message):
 def home():
     return "Bot is running!"
 
+@app.route('/ping')
+def ping():
+    return "Pong! Bot is alive"
+
+# Keep-alive function
+def keep_alive():
+    while True:
+        try:
+            # Send a request to your app URL every 5 minutes
+            url = "https://your-render-app-name.onrender.com"
+            requests.get(url)
+            logger.info("Keep-alive ping sent")
+        except Exception as e:
+            logger.error(f"Keep-alive error: {e}")
+        time.sleep(300)  # 5 minutes
+
 def bot_polling():
     while True:
         try:
-            print("Starting bot polling...")
-            bot.polling(timeout=20)
+            logger.info("Bot polling started...")
+            bot.polling(timeout=20, none_stop=True)
         except Exception as e:
-            print(f"Bot polling error: {e}")
+            logger.error(f"Bot polling error: {e}")
             time.sleep(15)
 
 if __name__ == '__main__':
     # Start bot polling in a separate thread
     polling_thread = threading.Thread(target=bot_polling)
-    polling_thread.daemon = True  # This makes the thread exit when main program exits
+    polling_thread.daemon = True
     polling_thread.start()
+    
+    # Start keep-alive in a separate thread
+    keep_alive_thread = threading.Thread(target=keep_alive)
+    keep_alive_thread.daemon = True
+    keep_alive_thread.start()
     
     # Start Flask server
     port = int(os.environ.get('PORT', 10000))
