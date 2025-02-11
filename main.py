@@ -45,21 +45,26 @@ authorized_users = {OWNER_ID}
 # Global variable to track bot status
 bot_running = False
 
-# Helper function to format username (always include @ and lowercase)
+# Helper function to format username (normalize format)
 def format_username(username):
-    username = username.lower().strip()
-    return f"@{username.replace('@', '')}"
+    # Remove @ and convert to lowercase for consistent comparison
+    return username.lower().replace('@', '')
 
 # Helper function to get verification data
 def get_verified_user(username):
-    username = format_username(username)
-    return verified_collection.find_one({"username": username})
+    # Format username for searching
+    formatted_username = format_username(username)
+    # Search case-insensitive
+    return verified_collection.find_one({
+        "username": {"$regex": f"^{formatted_username}$", "$options": "i"}
+    })
 
 # Helper function to save verification data
 def save_verified_user(username, service):
-    username = format_username(username)
+    # Store username without @ and in lowercase
+    formatted_username = format_username(username)
     verified_collection.update_one(
-        {"username": username},
+        {"username": formatted_username},
         {"$set": {"service": service}},
         upsert=True
     )
@@ -88,20 +93,20 @@ def check_verification(message):
         bot.reply_to(message, "Usage:\n1. Reply to a message with /check\n2. Or use: /check username")
         return
 
-    username = format_username(username)
     user_data = get_verified_user(username)
+    display_name = f"@{format_username(username)}"  # For display purposes
     
     if user_data:
         service = user_data['service'].upper()
         response = (
-            f"*🟢 {escape_markdown(username)} IS VERIFIED FOR:*\n\n"
+            f"*🟢 {escape_markdown(display_name)} IS VERIFIED FOR:*\n\n"
             f"{escape_markdown(service)}\n\n"
             f"*💬 WE STILL RECOMMEND USING ESCROW:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
     else:
         response = (
-            f"*🔴 {escape_markdown(username)} IS NOT VERIFIED\\!*\n\n"
+            f"*🔴 {escape_markdown(display_name)} IS NOT VERIFIED\\!*\n\n"
             f"*⚠️ WE HIGHLY RECOMMEND USING ESCROW:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
