@@ -92,16 +92,16 @@ def check_verification(message):
     user_data = get_verified_user(username)
     
     if user_data:
-        service = escape_markdown(user_data['service'].upper())  # Make service uppercase
+        service = user_data['service'].upper()
         response = (
-            f"*🟢 {escape_markdown(username)} IS VERIFIED FOR:*\n\n"
-            f"`{service}`\n\n"
+            f"*🟢 @{escape_markdown(username)} IS VERIFIED FOR:*\n\n"
+            f"{service}\n\n"
             f"*💬 WE STILL RECOMMEND USING ESCROW:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
     else:
         response = (
-            f"*🔴 {escape_markdown(username)} IS NOT VERIFIED\\!*\n\n"
+            f"*🔴 @{escape_markdown(username)} IS NOT VERIFIED\\!*\n\n"
             f"*⚠️ WE HIGHLY RECOMMEND USING ESCROW:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
