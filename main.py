@@ -45,16 +45,19 @@ authorized_users = {OWNER_ID}
 # Global variable to track bot status
 bot_running = False
 
+# Helper function to format username (always include @ and lowercase)
+def format_username(username):
+    username = username.lower().strip()
+    return f"@{username.replace('@', '')}"
+
 # Helper function to get verification data
 def get_verified_user(username):
-    # Remove @ if present
-    username = username.replace('@', '')
-    return verified_collection.find_one({"username": username.lower()})
+    username = format_username(username)
+    return verified_collection.find_one({"username": username})
 
 # Helper function to save verification data
 def save_verified_user(username, service):
-    # Remove @ if present and convert to lowercase for consistency
-    username = username.replace('@', '').lower()
+    username = format_username(username)
     verified_collection.update_one(
         {"username": username},
         {"$set": {"service": service}},
@@ -63,7 +66,7 @@ def save_verified_user(username, service):
 
 # Helper function to remove verified user
 def remove_verified_user(username):
-    username = username.replace('@', '').lower()
+    username = format_username(username)
     verified_collection.delete_one({"username": username})
 
 # Check if the user is authorized
@@ -72,41 +75,43 @@ def is_authorized(user):
 
 # Escape MarkdownV2 special characters
 def escape_markdown(text):
-    special_chars = r'\_*[]()~`>#+-=|{}.!'
-    return ''.join(f'\\{char}' if char in special_chars else char for char in text)
+    special_chars = '_*[]()~`>#+-=|{}.!'
+    return ''.join(f'\\{char}' if char in special_chars else char for char in str(text))
 
 @bot.message_handler(commands=['check'])
 def check_verification(message):
-    # If replying to a message
     if message.reply_to_message and message.reply_to_message.from_user.username:
         username = message.reply_to_message.from_user.username
-    # If username is provided in command
     elif len(message.text.split()) == 2:
         username = message.text.split()[1]
     else:
-        bot.reply_to(message, "Usage:\n1. Reply to a message with /check\n2. Or use: /check @username")
+        bot.reply_to(message, "Usage:\n1. Reply to a message with /check\n2. Or use: /check username")
         return
 
-    # Remove @ if present
-    username = username.replace('@', '')
+    username = format_username(username)
     user_data = get_verified_user(username)
     
     if user_data:
         service = user_data['service'].upper()
         response = (
-            f"*🟢 @{escape_markdown(username)} IS VERIFIED FOR:*\n\n"
-            f"{service}\n\n"
+            f"*🟢 {escape_markdown(username)} IS VERIFIED FOR:*\n\n"
+            f"{escape_markdown(service)}\n\n"
             f"*💬 WE STILL RECOMMEND USING ESCROW:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
     else:
         response = (
-            f"*🔴 @{escape_markdown(username)} IS NOT VERIFIED\\!*\n\n"
+            f"*🔴 {escape_markdown(username)} IS NOT VERIFIED\\!*\n\n"
             f"*⚠️ WE HIGHLY RECOMMEND USING ESCROW:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
 
-    bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
+    try:
+        bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        # Fallback to plain text if markdown fails
+        bot.reply_to(message, response.replace('*', '').replace('\\', ''), disable_web_page_preview=True)
 
 @bot.message_handler(commands=['add'])
 def add_verified(message):
@@ -116,16 +121,14 @@ def add_verified(message):
 
     args = message.text.split(maxsplit=2)
     if len(args) != 3:
-        bot.reply_to(message, "Usage: /add @username - Service")
+        bot.reply_to(message, "Usage: /add username - Service")
         return
 
-    username = args[1]
+    username = format_username(args[1])
     service = args[2]
 
-    # Remove @ if present
-    username = username.replace('@', '')
     save_verified_user(username, service)
-    bot.reply_to(message, f"@{username} has been added as verified for {service}.")
+    bot.reply_to(message, f"{username} has been added as verified for {service}.")
 
 @bot.message_handler(commands=['remove'])
 def remove_verified(message):
@@ -134,7 +137,7 @@ def remove_verified(message):
         return
 
     if len(message.text.split()) != 2:
-        bot.reply_to(message, "Usage: /remove @username")
+        bot.reply_to(message, "Usage: /remove username")
         return
 
     username = message.text.split()[1]
