@@ -47,21 +47,31 @@ bot_running = False
 
 # Helper function to format username (normalize format)
 def format_username(username):
-    # Remove @ and convert to lowercase for consistent comparison
-    return username.lower().replace('@', '')
+    # Ensure @ is at the start and convert to lowercase
+    username = username.lower().strip()
+    username = username.replace('@', '')  # Remove any existing @
+    return f"@{username}"  # Always add @ at the start
 
 # Helper function to get verification data
 def get_verified_user(username):
-    # Format username for searching
+    # Format username for searching (always with @)
     formatted_username = format_username(username)
-    # Search case-insensitive
-    return verified_collection.find_one({
-        "username": {"$regex": f"^{formatted_username}$", "$options": "i"}
+    
+    # Search case-insensitive with @
+    result = verified_collection.find_one({
+        "$or": [
+            {"username": formatted_username},  # Exact match with @
+            {"username": formatted_username.lower()},  # Lowercase match with @
+            {"username": formatted_username.replace('_', '')},  # No underscore
+            {"username": formatted_username.replace('_', '-')}  # Hyphen instead of underscore
+        ]
     })
+    
+    return result
 
 # Helper function to save verification data
 def save_verified_user(username, service):
-    # Store username without @ and in lowercase
+    # Store username with @ and in lowercase
     formatted_username = format_username(username)
     verified_collection.update_one(
         {"username": formatted_username},
@@ -85,16 +95,17 @@ def escape_markdown(text):
 
 @bot.message_handler(commands=['check'])
 def check_verification(message):
-    if message.reply_to_message and message.reply_to_message.from_user.username:
+    # Get username from command or reply
+    if len(message.text.split()) > 1:
+        username = message.text.split()[1].strip()
+    elif message.reply_to_message and message.reply_to_message.from_user.username:
         username = message.reply_to_message.from_user.username
-    elif len(message.text.split()) == 2:
-        username = message.text.split()[1]
     else:
         bot.reply_to(message, "Usage:\n1. Reply to a message with /check\n2. Or use: /check username")
         return
-
+    
     user_data = get_verified_user(username)
-    display_name = f"@{format_username(username)}"  # For display purposes
+    display_name = format_username(username)  # Use formatted version for display
     
     if user_data:
         service = user_data['service'].upper()
@@ -114,7 +125,6 @@ def check_verification(message):
     try:
         bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
     except Exception as e:
-        print(f"Error sending message: {e}")
         # Fallback to plain text if markdown fails
         bot.reply_to(message, response.replace('*', '').replace('\\', ''), disable_web_page_preview=True)
 
