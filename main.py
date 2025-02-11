@@ -105,20 +105,20 @@ def check_verification(message):
         return
     
     user_data = get_verified_user(username)
-    display_name = format_username(username)  # Use formatted version for display
+    display_name = format_username(username).upper()  # Capitalize username
     
     if user_data:
-        service = user_data['service'].upper()
+        service = user_data['service'].upper()  # Capitalize service
         response = (
-            f"*🟢 {escape_markdown(display_name)} IS VERIFIED FOR:*\n\n"
+            f"*🟢 {escape_markdown(display_name)} is verified for:*\n\n"
             f"{escape_markdown(service)}\n\n"
-            f"*💬 WE STILL RECOMMEND USING ESCROW:*\n"
+            f"*💬 We still recommend using escrow:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
     else:
         response = (
-            f"*🔴 {escape_markdown(display_name)} IS NOT VERIFIED\\!*\n\n"
-            f"*⚠️ WE HIGHLY RECOMMEND USING ESCROW:*\n"
+            f"*🔴 {escape_markdown(display_name)} is not verified\\!*\n\n"
+            f"*⚠️ We highly recommend using escrow:*\n"
             f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
         )
 
