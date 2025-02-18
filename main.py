@@ -54,18 +54,21 @@ def format_username(username):
 
 # Helper function to get verification data
 def get_verified_user(username):
-    # Format username for searching (always with @)
     formatted_username = format_username(username)
-    
-    # Search case-insensitive with @
+
     result = verified_collection.find_one({
         "$or": [
-            {"username": formatted_username},  # Exact match with @
-            {"username": formatted_username.lower()},  # Lowercase match with @
-            {"username": formatted_username.replace('_', '')},  # No underscore
-            {"username": formatted_username.replace('_', '-')}  # Hyphen instead of underscore
+            {"username": formatted_username},
+            {"username": formatted_username.lower()},
+            {"username": formatted_username.replace('_', '')},
+            {"username": formatted_username.replace('_', '-')}
         ]
     })
+
+    if result:
+        # Ensure missing fields are handled properly
+        result.setdefault('source', 'Unknown')  # Default value if 'source' is missing
+        result.setdefault('service', 'Unknown')  # Default value if 'service' is missing
     
     return result
 
