@@ -66,9 +66,9 @@ def get_verified_user(username):
     })
 
     if result:
-        # Ensure missing fields are handled properly
-        result.setdefault('source', 'Unknown')  # Default value if 'source' is missing
-        result.setdefault('service', 'Unknown')  # Default value if 'service' is missing
+        # Use .get() to avoid KeyError if 'source' is missing
+        result['source'] = result.get('source', 'Unknown')  
+        result['service'] = result.get('service', 'Unknown') 
     
     return result
 
