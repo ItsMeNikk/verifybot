@@ -65,11 +65,10 @@ def get_verified_user(username):
         ]
     })
 
-   if result:
-    result.pop('source', None)  # Remove 'source' if it exists to avoid errors
-    result.setdefault('service', 'Unknown')  # Only set 'service'
+    if result:
+        result.pop('source', None)  # Completely remove 'source' reference
+        result.setdefault('service', 'Unknown')  # Keep only 'service'
 
-    
     return result
 
 # Helper function to save verification data
