@@ -65,10 +65,10 @@ def get_verified_user(username):
         ]
     })
 
-    if result:
-        # Use .get() to avoid KeyError if 'source' is missing
-        result['source'] = result.get('source', 'Unknown')  
-        result['service'] = result.get('service', 'Unknown') 
+   if result:
+    result.pop('source', None)  # Remove 'source' if it exists to avoid errors
+    result.setdefault('service', 'Unknown')  # Only set 'service'
+
     
     return result
 
