@@ -203,13 +203,15 @@ def bot_polling():
             logger.info("Bot polling started...")
             bot_running = True
             bot.polling(timeout=60, long_polling_timeout=60, non_stop=True)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error: {e}")
+        except telebot.apihelper.ApiException as e:
+            logger.error(f"Telegram API error: {e}")
         except Exception as e:
-            logger.error(f"Bot polling error: {e}")
-            bot_running = False
-            time.sleep(10)
-            continue
+            logger.error(f"Unexpected error: {e}")
         finally:
             bot_running = False
+            time.sleep(10)
 
 # Keep-alive function with bot status check
 def keep_alive():
