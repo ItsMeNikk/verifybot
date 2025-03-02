@@ -65,11 +65,13 @@ def get_verified_user(username):
         ]
     })
 
-    if result:
-        result.pop('source', None)  # Completely remove 'source' reference
-        result.setdefault('service', 'Unknown')  # Keep only 'service'
-
-    return result
+    if result:  # Only process if result exists
+        if 'source' in result:
+            result.pop('source', None)
+        result.setdefault('service', 'Unknown')
+        return result
+    
+    return None  # Explicit return None if no user found
 
 # Helper function to save verification data
 def save_verified_user(username, service):
@@ -205,12 +207,16 @@ def bot_polling():
             bot.polling(timeout=60, long_polling_timeout=60, non_stop=True)
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error: {e}")
+            time.sleep(10)  # Delay before retry
         except telebot.apihelper.ApiException as e:
             logger.error(f"Telegram API error: {e}")
+            time.sleep(10)  # Delay before retry
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {str(e)}")
+            time.sleep(10)  # Delay before retry
         finally:
             bot_running = False
+            logger.info("Bot polling stopped, attempting to restart...")
             time.sleep(10)
 
 # Keep-alive function with bot status check
