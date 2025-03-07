@@ -47,7 +47,6 @@ bot_running = False
 
 # Helper function to format username (normalize format)
 def format_username(username):
-    # Ensure @ is at the start and convert to lowercase
     username = username.lower().strip()
     username = username.replace('@', '')  # Remove any existing @
     return f"@{username}"  # Always add @ at the start
@@ -65,17 +64,15 @@ def get_verified_user(username):
         ]
     })
 
-    if result:  # Only process if result exists
-        if 'source' in result:
-            result.pop('source', None)
-        result.setdefault('service', 'Unknown')
+    if result:
+        result.pop('source', None)  # Remove 'source' key if it exists
+        result.setdefault('service', 'Unknown')  # Set default service if missing
         return result
     
-    return None  # Explicit return None if no user found
+    return None  # Explicitly return None if no user found
 
 # Helper function to save verification data
 def save_verified_user(username, service):
-    # Store username with @ and in lowercase
     formatted_username = format_username(username)
     verified_collection.update_one(
         {"username": formatted_username},
@@ -99,7 +96,6 @@ def escape_markdown(text):
 
 @bot.message_handler(commands=['check'])
 def check_verification(message):
-    # Get username from command or reply
     if len(message.text.split()) > 1:
         username = message.text.split()[1].strip()
     elif message.reply_to_message and message.reply_to_message.from_user.username:
@@ -109,10 +105,10 @@ def check_verification(message):
         return
     
     user_data = get_verified_user(username)
-    display_name = format_username(username).upper()  # Capitalize username
-    
+    display_name = format_username(username).upper()
+
     if user_data:
-        service = user_data['service'].upper()  # Capitalize service
+        service = user_data.get('service', 'Unknown').upper()
         response = (
             f"*🟢 {escape_markdown(display_name)} is verified for:*\n\n"
             f"{escape_markdown(service)}\n\n"
@@ -128,8 +124,7 @@ def check_verification(message):
 
     try:
         bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
-    except Exception as e:
-        # Fallback to plain text if markdown fails
+    except Exception:
         bot.reply_to(message, response.replace('*', '').replace('\\', ''), disable_web_page_preview=True)
 
 @bot.message_handler(commands=['add'])
@@ -181,19 +176,16 @@ def authorize_user(message):
         authorized_users.add(user_id)
         bot.reply_to(message, f"User {user_id} has been authorized.")
     except ValueError:
-        bot.reply_to(message, "Please provide a valid user ID")
+        bot.reply_to(message, "Please provide a valid user ID.")
 
-# Add these new routes
 @app.route('/')
 def home():
     return f"Bot is {'running' if bot_running else 'stopped'}"
 
 @app.route('/health')
 def health():
-    status = "running" if bot_running else "stopped"
-    return f"OK - Bot is {status}", 200
+    return f"OK - Bot is {'running' if bot_running else 'stopped'}", 200
 
-# Add a simple command to test bot
 @bot.message_handler(commands=['ping'])
 def ping_command(message):
     bot.reply_to(message, "Pong! Bot is working!")
@@ -207,46 +199,36 @@ def bot_polling():
             bot.polling(timeout=60, long_polling_timeout=60, non_stop=True)
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error: {e}")
-            time.sleep(10)  # Delay before retry
+            time.sleep(10)
         except telebot.apihelper.ApiException as e:
             logger.error(f"Telegram API error: {e}")
-            time.sleep(10)  # Delay before retry
+            time.sleep(10)
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
-            time.sleep(10)  # Delay before retry
+            time.sleep(10)
         finally:
             bot_running = False
             logger.info("Bot polling stopped, attempting to restart...")
             time.sleep(10)
 
-# Keep-alive function with bot status check
 def keep_alive():
     while True:
-        try:
-            # Check if bot is running
-            if not bot_running:
-                logger.warning("Bot not running, restarting polling...")
-                # Restart polling thread
-                polling_thread = threading.Thread(target=bot_polling)
-                polling_thread.daemon = True
-                polling_thread.start()
-            
-            logger.info("Bot status: " + ("running" if bot_running else "stopped"))
-        except Exception as e:
-            logger.error(f"Keep-alive error: {e}")
-        time.sleep(30)  # Check every 30 seconds
+        if not bot_running:
+            logger.warning("Bot not running, restarting polling...")
+            polling_thread = threading.Thread(target=bot_polling)
+            polling_thread.daemon = True
+            polling_thread.start()
+        logger.info("Bot status: " + ("running" if bot_running else "stopped"))
+        time.sleep(30)
 
 if __name__ == '__main__':
-    # Start bot polling in a separate thread
     polling_thread = threading.Thread(target=bot_polling)
     polling_thread.daemon = True
     polling_thread.start()
     
-    # Start keep-alive in a separate thread
     keep_alive_thread = threading.Thread(target=keep_alive)
     keep_alive_thread.daemon = True
     keep_alive_thread.start()
     
-    # Start Flask server
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port)
