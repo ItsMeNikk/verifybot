@@ -65,6 +65,8 @@ def get_verified_user(username):
     })
 
     if result:
+        # Convert MongoDB document to a mutable dictionary
+        result = dict(result)
         result.pop('source', None)  # Remove 'source' key if it exists
         result.setdefault('service', 'Unknown')  # Set default service if missing
         return result
@@ -96,87 +98,104 @@ def escape_markdown(text):
 
 @bot.message_handler(commands=['check'])
 def check_verification(message):
-    if len(message.text.split()) > 1:
-        username = message.text.split()[1].strip()
-    elif message.reply_to_message and message.reply_to_message.from_user.username:
-        username = message.reply_to_message.from_user.username
-    else:
-        bot.reply_to(message, "Usage:\n1. Reply to a message with /check\n2. Or use: /check username")
-        return
-    
-    user_data = get_verified_user(username)
-    display_name = format_username(username).upper()
-
-    if user_data:
-        service = user_data.get('service', 'Unknown').upper()
-        response = (
-            f"*🟢 {escape_markdown(display_name)} is verified for:*\n\n"
-            f"{escape_markdown(service)}\n\n"
-            f"*💬 We still recommend using escrow:*\n"
-            f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
-        )
-    else:
-        response = (
-            f"*🔴 {escape_markdown(display_name)} is not verified\\!*\n\n"
-            f"*⚠️ We highly recommend using escrow:*\n"
-            f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
-        )
-
     try:
-        bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
-    except Exception:
-        bot.reply_to(message, response.replace('*', '').replace('\\', ''), disable_web_page_preview=True)
+        if len(message.text.split()) > 1:
+            username = message.text.split()[1].strip()
+        elif message.reply_to_message and message.reply_to_message.from_user.username:
+            username = message.reply_to_message.from_user.username
+        else:
+            bot.reply_to(message, "Usage:\n1. Reply to a message with /check\n2. Or use: /check username")
+            return
+        
+        user_data = get_verified_user(username)
+        display_name = format_username(username).upper()
+
+        if user_data:
+            service = user_data.get('service', 'Unknown').upper()
+            response = (
+                f"*🟢 {escape_markdown(display_name)} is verified for:*\n\n"
+                f"{escape_markdown(service)}\n\n"
+                f"*💬 We still recommend using escrow:*\n"
+                f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
+            )
+        else:
+            response = (
+                f"*🔴 {escape_markdown(display_name)} is not verified\\!*\n\n"
+                f"*⚠️ We highly recommend using escrow:*\n"
+                f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
+            )
+
+        try:
+            bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
+        except Exception as e:
+            logger.error(f"Error sending markdown message: {e}")
+            bot.reply_to(message, response.replace('*', '').replace('\\', ''), disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Error in check_verification: {e}")
+        bot.reply_to(message, "An error occurred while processing your request.")
 
 @bot.message_handler(commands=['add'])
 def add_verified(message):
-    if not is_authorized(message.from_user):
-        bot.reply_to(message, "You are not authorized to use this command.")
-        return
+    try:
+        if not is_authorized(message.from_user):
+            bot.reply_to(message, "You are not authorized to use this command.")
+            return
 
-    args = message.text.split(maxsplit=2)
-    if len(args) != 3:
-        bot.reply_to(message, "Usage: /add username - Service")
-        return
+        args = message.text.split(maxsplit=2)
+        if len(args) != 3:
+            bot.reply_to(message, "Usage: /add username - Service")
+            return
 
-    username = format_username(args[1])
-    service = args[2]
+        username = format_username(args[1])
+        service = args[2]
 
-    save_verified_user(username, service)
-    bot.reply_to(message, f"{username} has been added as verified for {service}.")
+        save_verified_user(username, service)
+        bot.reply_to(message, f"{username} has been added as verified for {service}.")
+    except Exception as e:
+        logger.error(f"Error in add_verified: {e}")
+        bot.reply_to(message, "An error occurred while processing your request.")
 
 @bot.message_handler(commands=['remove'])
 def remove_verified(message):
-    if not is_authorized(message.from_user):
-        bot.reply_to(message, "You are not authorized to use this command.")
-        return
+    try:
+        if not is_authorized(message.from_user):
+            bot.reply_to(message, "You are not authorized to use this command.")
+            return
 
-    if len(message.text.split()) != 2:
-        bot.reply_to(message, "Usage: /remove username")
-        return
+        if len(message.text.split()) != 2:
+            bot.reply_to(message, "Usage: /remove username")
+            return
 
-    username = message.text.split()[1]
-    if get_verified_user(username):
-        remove_verified_user(username)
-        bot.reply_to(message, f"{username} has been removed from verified users.")
-    else:
-        bot.reply_to(message, f"{username} is not a verified user.")
+        username = message.text.split()[1]
+        if get_verified_user(username):
+            remove_verified_user(username)
+            bot.reply_to(message, f"{username} has been removed from verified users.")
+        else:
+            bot.reply_to(message, f"{username} is not a verified user.")
+    except Exception as e:
+        logger.error(f"Error in remove_verified: {e}")
+        bot.reply_to(message, "An error occurred while processing your request.")
 
 @bot.message_handler(commands=['auth'])
 def authorize_user(message):
-    if message.from_user.id != OWNER_ID:
-        bot.reply_to(message, "Only the owner can authorize users.")
-        return
-
-    if len(message.text.split()) != 2:
-        bot.reply_to(message, "Usage: /auth <user_id>")
-        return
-
     try:
-        user_id = int(message.text.split()[1])
-        authorized_users.add(user_id)
-        bot.reply_to(message, f"User {user_id} has been authorized.")
-    except ValueError:
-        bot.reply_to(message, "Please provide a valid user ID.")
+        if message.from_user.id != OWNER_ID:
+            bot.reply_to(message, "Only the owner can authorize users.")
+            return
+
+        if len(message.text.split()) != 2:
+            bot.reply_to(message, "Usage: /auth <user_id>")
+            return
+
+        try:
+            user_id = int(message.text.split()[1])
+            authorized_users.add(user_id)
+            bot.reply_to(message, f"User {user_id} has been authorized.")
+        except ValueError:
+            bot.reply_to(message, "Please provide a valid user ID.")
+    except Exception as e:
+        logger.error(f"Error in authorize_user: {e}")
+        bot.reply_to(message, "An error occurred while processing your request.")
 
 @app.route('/')
 def home():
@@ -213,22 +232,33 @@ def bot_polling():
 
 def keep_alive():
     while True:
-        if not bot_running:
-            logger.warning("Bot not running, restarting polling...")
-            polling_thread = threading.Thread(target=bot_polling)
-            polling_thread.daemon = True
-            polling_thread.start()
-        logger.info("Bot status: " + ("running" if bot_running else "stopped"))
+        try:
+            if not bot_running:
+                logger.warning("Bot not running, restarting polling...")
+                polling_thread = threading.Thread(target=bot_polling)
+                polling_thread.daemon = True
+                polling_thread.start()
+            logger.info("Bot status: " + ("running" if bot_running else "stopped"))
+        except Exception as e:
+            logger.error(f"Error in keep_alive: {e}")
+        
         time.sleep(30)
 
 if __name__ == '__main__':
-    polling_thread = threading.Thread(target=bot_polling)
-    polling_thread.daemon = True
-    polling_thread.start()
-    
-    keep_alive_thread = threading.Thread(target=keep_alive)
-    keep_alive_thread.daemon = True
-    keep_alive_thread.start()
-    
-    port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port)
+    try:
+        # Start bot polling in a separate thread
+        polling_thread = threading.Thread(target=bot_polling)
+        polling_thread.daemon = True
+        polling_thread.start()
+        
+        # Start keep-alive in a separate thread
+        keep_alive_thread = threading.Thread(target=keep_alive)
+        keep_alive_thread.daemon = True
+        keep_alive_thread.start()
+        
+        # Run Flask app
+        port = int(os.environ.get('PORT', 8000))
+        app.run(host='0.0.0.0', port=port)
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        exit(1)
