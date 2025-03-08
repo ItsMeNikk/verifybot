@@ -2,7 +2,7 @@ import telebot
 import time
 from dotenv import load_dotenv
 import os
-from pymongo import MongoClient
+import psycopg2
 from flask import Flask, request
 import threading
 import logging
@@ -24,70 +24,85 @@ if not TOKEN:
     logger.error("Error: TELEGRAM_TOKEN not found")
     exit(1)
 
-OWNER_ID = int(os.getenv('OWNER_ID'))  # Convert to integer
-MONGODB_URI = os.getenv('MONGODB_URI')
+OWNER_ID = int(os.getenv('OWNER_ID'))
+POSTGRES_URI = os.getenv('POSTGRES_URI')
+if not POSTGRES_URI:
+    logger.error("Error: POSTGRES_URI not found")
+    exit(1)
 
 # Print confirmation
 print(f"Token loaded: {TOKEN[:5]}...{TOKEN[-5:]}")
 print(f"Owner ID loaded: {OWNER_ID}")
 
-# Initialize bot with a larger timeout
+# Initialize bot
 bot = telebot.TeleBot(TOKEN, threaded=True)
 
-# Initialize MongoDB
-client = MongoClient(MONGODB_URI)
-db = client['verifiedusers']  # Database name
-verified_collection = db['users']  # Collection name
+# Connect to PostgreSQL
+def get_db_connection():
+    return psycopg2.connect(POSTGRES_URI)
 
 # Store authorized users with IDs
 authorized_users = {OWNER_ID}
 
-# Global variable to track bot status
-bot_running = False
-
-# Helper function to format username (normalize format)
+# Helper function to format username
 def format_username(username):
-    username = username.lower().strip()
-    username = username.replace('@', '')  # Remove any existing @
-    return f"@{username}"  # Always add @ at the start
+    username = username.lower().strip().replace('@', '')
+    return f"@{username}"
 
 # Helper function to get verification data
 def get_verified_user(username):
     formatted_username = format_username(username)
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT username, service FROM verified_users
+            WHERE username = %s OR username = %s OR username = %s OR username = %s
+        """, (formatted_username, formatted_username.lower(), 
+              formatted_username.replace('_', ''), formatted_username.replace('_', '-')))
+        
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
 
-    result = verified_collection.find_one({
-        "$or": [
-            {"username": formatted_username},
-            {"username": formatted_username.lower()},
-            {"username": formatted_username.replace('_', '')},
-            {"username": formatted_username.replace('_', '-')}
-        ]
-    })
-
-    if result:
-        # Convert MongoDB document to a mutable dictionary
-        result = dict(result)
-        result.pop('source', None)  # Remove 'source' key if it exists
-        result.setdefault('service', 'Unknown')  # Set default service if missing
-        return result
-    
-    return None  # Explicitly return None if no user found
+        if result:
+            return {"username": result[0], "service": result[1]}
+        return None
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        return None
 
 # Helper function to save verification data
 def save_verified_user(username, service):
     formatted_username = format_username(username)
-    verified_collection.update_one(
-        {"username": formatted_username},
-        {"$set": {"service": service}},
-        upsert=True
-    )
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO verified_users (username, service)
+            VALUES (%s, %s)
+            ON CONFLICT (username) DO UPDATE SET service = EXCLUDED.service
+        """, (formatted_username, service))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error saving user: {e}")
 
 # Helper function to remove verified user
 def remove_verified_user(username):
-    username = format_username(username)
-    verified_collection.delete_one({"username": username})
+    formatted_username = format_username(username)
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM verified_users WHERE username = %s", (formatted_username,))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error removing user: {e}")
 
-# Check if the user is authorized
+# Check if user is authorized
 def is_authorized(user):
     return user.id in authorized_users
 
@@ -125,14 +140,9 @@ def check_verification(message):
                 f"[Scrizon](https://t\\.me/scrizon) \\| [Cupid](https://t\\.me/cupid)"
             )
 
-        try:
-            bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
-        except Exception as e:
-            logger.error(f"Error sending markdown message: {e}")
-            bot.reply_to(message, response.replace('*', '').replace('\\', ''), disable_web_page_preview=True)
+        bot.reply_to(message, response, parse_mode='MarkdownV2', disable_web_page_preview=True)
     except Exception as e:
         logger.error(f"Error in check_verification: {e}")
-        bot.reply_to(message, "An error occurred while processing your request.")
 
 @bot.message_handler(commands=['add'])
 def add_verified(message):
@@ -153,7 +163,6 @@ def add_verified(message):
         bot.reply_to(message, f"{username} has been added as verified for {service}.")
     except Exception as e:
         logger.error(f"Error in add_verified: {e}")
-        bot.reply_to(message, "An error occurred while processing your request.")
 
 @bot.message_handler(commands=['remove'])
 def remove_verified(message):
@@ -174,91 +183,31 @@ def remove_verified(message):
             bot.reply_to(message, f"{username} is not a verified user.")
     except Exception as e:
         logger.error(f"Error in remove_verified: {e}")
-        bot.reply_to(message, "An error occurred while processing your request.")
-
-@bot.message_handler(commands=['auth'])
-def authorize_user(message):
-    try:
-        if message.from_user.id != OWNER_ID:
-            bot.reply_to(message, "Only the owner can authorize users.")
-            return
-
-        if len(message.text.split()) != 2:
-            bot.reply_to(message, "Usage: /auth <user_id>")
-            return
-
-        try:
-            user_id = int(message.text.split()[1])
-            authorized_users.add(user_id)
-            bot.reply_to(message, f"User {user_id} has been authorized.")
-        except ValueError:
-            bot.reply_to(message, "Please provide a valid user ID.")
-    except Exception as e:
-        logger.error(f"Error in authorize_user: {e}")
-        bot.reply_to(message, "An error occurred while processing your request.")
 
 @app.route('/')
 def home():
-    return f"Bot is {'running' if bot_running else 'stopped'}"
+    return f"Bot is running"
 
 @app.route('/health')
 def health():
-    return f"OK - Bot is {'running' if bot_running else 'stopped'}", 200
+    return "OK", 200
 
 @bot.message_handler(commands=['ping'])
 def ping_command(message):
     bot.reply_to(message, "Pong! Bot is working!")
 
 def bot_polling():
-    global bot_running
     while True:
         try:
-            logger.info("Bot polling started...")
-            bot_running = True
             bot.polling(timeout=60, long_polling_timeout=60, non_stop=True)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error: {e}")
-            time.sleep(10)
-        except telebot.apihelper.ApiException as e:
-            logger.error(f"Telegram API error: {e}")
-            time.sleep(10)
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             time.sleep(10)
-        finally:
-            bot_running = False
-            logger.info("Bot polling stopped, attempting to restart...")
-            time.sleep(10)
-
-def keep_alive():
-    while True:
-        try:
-            if not bot_running:
-                logger.warning("Bot not running, restarting polling...")
-                polling_thread = threading.Thread(target=bot_polling)
-                polling_thread.daemon = True
-                polling_thread.start()
-            logger.info("Bot status: " + ("running" if bot_running else "stopped"))
-        except Exception as e:
-            logger.error(f"Error in keep_alive: {e}")
-        
-        time.sleep(30)
 
 if __name__ == '__main__':
-    try:
-        # Start bot polling in a separate thread
-        polling_thread = threading.Thread(target=bot_polling)
-        polling_thread.daemon = True
-        polling_thread.start()
-        
-        # Start keep-alive in a separate thread
-        keep_alive_thread = threading.Thread(target=keep_alive)
-        keep_alive_thread.daemon = True
-        keep_alive_thread.start()
-        
-        # Run Flask app
-        port = int(os.environ.get('PORT', 8000))
-        app.run(host='0.0.0.0', port=port)
-    except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        exit(1)
+    polling_thread = threading.Thread(target=bot_polling)
+    polling_thread.daemon = True
+    polling_thread.start()
+
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)
